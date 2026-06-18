@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>바오밥 결재알림 설정</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    h1 { font-size: 20px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px; }
+    .subtitle { font-size: 14px; color: #888; margin-bottom: 28px; }
+    .step { background: #f8f9fa; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    .step-label { font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .step-title { font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; }
+    .kakao-btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: #FEE500; color: #191919; border: none; border-radius: 10px;
+      padding: 13px 20px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%;
+    }
+    .kakao-btn:hover { background: #f0d800; }
+    .token-display {
+      background: #f0f4ff;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 12px;
+      color: #333;
+      word-break: break-all;
+      line-height: 1.6;
+      display: none;
+    }
+    .token-display strong { color: #3A86FF; display: block; margin-bottom: 6px; font-size: 13px; }
+    .copy-btn {
+      background: #3A86FF; color: white; border: none; border-radius: 8px;
+      padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+      width: 100%; margin-top: 10px;
+    }
+    .copy-btn:hover { background: #2d73e8; }
+    .status { margin-top: 12px; padding: 12px 14px; border-radius: 8px; font-size: 14px; display: none; }
+    .status.success { background: #e8f5e9; color: #2e7d32; display: block; }
+    .status.error { background: #ffebee; color: #c62828; display: block; }
+    .status.info { background: #e3f2fd; color: #1565c0; display: block; }
+    .guide { font-size: 13px; color: #666; line-height: 1.7; }
+    .guide li { margin-left: 16px; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>🌳 바오밥 결재알림 설정</h1>
+  <p class="subtitle">카카오 토큰 발급 후 Vercel 환경변수에 등록하세요</p>
+
+  <div class="step">
+    <div class="step-label">Step 1</div>
+    <div class="step-title">카카오 로그인 & 토큰 발급</div>
+    <button class="kakao-btn" onclick="kakaoLogin()">
+      카카오 로그인하기
+    </button>
+    <div id="loginStatus" class="status"></div>
+    <div id="tokenDisplay" class="token-display">
+      <strong>✅ 아래 토큰을 복사해서 Vercel 환경변수에 등록하세요</strong>
+      <div id="tokenValue"></div>
+      <button class="copy-btn" onclick="copyToken()">📋 토큰 복사</button>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-label">Step 2</div>
+    <div class="step-title">Vercel 환경변수 등록 방법</div>
+    <div class="guide">
+      <ol>
+        <li>Vercel 대시보드 → 프로젝트 선택</li>
+        <li>Settings → Environment Variables</li>
+        <li>아래 4개 변수 추가:</li>
+      </ol>
+      <br>
+      <code style="font-size:12px; background:#eee; padding:8px; border-radius:6px; display:block; line-height:2">
+        KAKAO_ACCESS_TOKEN = (위에서 복사한 토큰)<br>
+        ECOUNT_COMPANY = 회사코드<br>
+        ECOUNT_ID = 아이디<br>
+        ECOUNT_PW = 비밀번호
+      </code>
+    </div>
+  </div>
+</div>
+
+<script>
+  const REST_API_KEY = 'fa1ff785a7ba7490a2e7b535162a9c37';
+  const REDIRECT_URI = 'https://resonant-snickerdoodle-9b4473.netlify.app';
+
+  window.onload = function() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      showStatus('loginStatus', 'info', '토큰 발급 중...');
+      getToken(code);
+    }
+  };
+
+  function kakaoLogin() {
+    const url = `https://kauth.kakao.com/oauth/authorize?client_id=${REST_API_KEY}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=talk_message`;
+    window.location.href = url;
+  }
+
+  async function getToken(code) {
+    try {
+      const res = await fetch('https://kauth.kakao.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: REST_API_KEY,
+          redirect_uri: REDIRECT_URI,
+          code: code
+        })
+      });
+      const data = await res.json();
+      if (data.access_token) {
+        showStatus('loginStatus', 'success', '✅ 토큰 발급 성공!');
+        document.getElementById('tokenValue').textContent = data.access_token;
+        document.getElementById('tokenDisplay').style.display = 'block';
+        // refresh token도 표시
+        if (data.refresh_token) {
+          document.getElementById('tokenValue').textContent += '\n\n[Refresh Token]\n' + data.refresh_token;
+        }
+      } else {
+        showStatus('loginStatus', 'error', '실패: ' + (data.error_description || data.error));
+      }
+    } catch(e) {
+      showStatus('loginStatus', 'error', '오류: ' + e.message);
+    }
+  }
+
+  function copyToken() {
+    const text = document.getElementById('tokenValue').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      alert('복사됐어요!');
+    });
+  }
+
+  function showStatus(id, type, msg) {
+    const el = document.getElementById(id);
+    el.className = 'status ' + type;
+    el.textContent = msg;
+  }
+</script>
+</body>
+</html>

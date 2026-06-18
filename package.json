@@ -1,0 +1,6 @@
+{
+  "name": "baobab-alert",
+  "version": "1.0.0",
+  "description": "바오밥 결재알림 카카오톡 자동 발송",
+  "private": true
+}
