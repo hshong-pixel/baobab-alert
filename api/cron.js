@@ -111,4 +111,19 @@ async function sendKakaoMessage(items) {
     button_title: '이카운트 결재하기'
   };
 
-  const
+  const kakaoRes = await fetch('https://kapi.kakao.com/v2/api/talk/memo/default/send', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({
+      template_object: JSON.stringify(templateObject)
+    })
+  });
+
+  const data = await kakaoRes.json();
+  if (data.result_code !== 0) {
+    throw new Error('카카오 전송 실패: ' + JSON.stringify(data));
+  }
+}
