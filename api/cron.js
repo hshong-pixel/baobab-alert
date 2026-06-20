@@ -1,6 +1,6 @@
 export const config = { runtime: 'edge' };
 
-const ECOUNT_ZONE_URL = 'https://sboapi.ecount.com/OAPI/V2/Zone';
+const ECOUNT_ZONE_URL = 'https://oapi.ecount.com/OAPI/V2/Zone';
 
 export default async function handler(req) {
   const authHeader = req.headers.get('authorization');
