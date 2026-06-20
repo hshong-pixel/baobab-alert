@@ -18,6 +18,7 @@ export default async function handler(req) {
       }),
     });
     const zoneData = await zoneRes.json();
+    console.log('[baobab-alert] zoneData:', JSON.stringify(zoneData));
     const zone = zoneData?.Data?.ZONE;
     if (!zone) throw new Error(`Zone fail: ${JSON.stringify(zoneData)}`);
 
@@ -36,6 +37,7 @@ export default async function handler(req) {
       }
     );
     const loginData = await loginRes.json();
+    console.log('[baobab-alert] loginData:', JSON.stringify(loginData));
     const sessionId = loginData?.Data?.Datas?.SESSION_ID;
     if (!sessionId) throw new Error(`Login fail: ${JSON.stringify(loginData)}`);
 
@@ -80,4 +82,30 @@ export default async function handler(req) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization':
+            'Authorization': `Bearer ${process.env.KAKAO_ACCESS_TOKEN}`,
+          },
+          body: `template_object=${encodeURIComponent(JSON.stringify(message))}`,
+        }
+      );
+      const kakaoData = await kakaoRes.json();
+      if (kakaoData.result_code !== 0) throw new Error(`Kakao fail: ${JSON.stringify(kakaoData)}`);
+
+      return new Response(
+        JSON.stringify({ ok: true, waitCount, kakao: kakaoData }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ ok: true, waitCount: 0, message: 'no pending approvals' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+
+  } catch (err) {
+    console.error('[baobab-alert] error:', err.message);
+    return new Response(
+      JSON.stringify({ ok: false, error: err.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
