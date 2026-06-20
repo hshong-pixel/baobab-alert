@@ -1,6 +1,3 @@
-// api/cron.js
-// 이카운트 결재대기 → 카카오톡 나에게 보내기 알림
-
 export const config = {
   runtime: 'edge',
 };
@@ -8,20 +5,18 @@ export const config = {
 const ECOUNT_ZONE_URL = 'https://sboapi.ecount.com/OAPI/V2/Zone';
 
 export default async function handler(req) {
-  // Vercel Cron 인증 체크
   const authHeader = req.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return new Response('Unauthorized', { status: 401 });
   }
 
   try {
-    // ── 1단계: Zone 조회 ──────────────────────────────────────
     const zoneRes = await fetch(ECOUNT_ZONE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json;charset=UTF-8' },
       body: JSON.stringify({
         COM_CODE: process.env.ECOUNT_COMPANY,
-        USER_ID:  process.env.ECOUNT_ID,
+        USER_ID: process.env.ECOUNT_ID,
       }),
     });
 
@@ -32,9 +27,100 @@ export default async function handler(req) {
       throw new Error(`Zone 조회 실패: ${JSON.stringify(zoneData)}`);
     }
 
-    // ── 2단계: 로그인 → 세션 토큰 발급 ──────────────────────
     const loginRes = await fetch(
       `https://sboapi${zone}.ecount.com/OAPI/V2/OAPILogin`,
       {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+        body: JSON.stringify({
+          COM_CODE: process.env.ECOUNT_COMPANY,
+          USER_ID: process.env.ECOUNT_ID,
+          API_CERT_KEY: process.env.ECOUNT_PW,
+          LAN_TYPE: 'ko-KR',
+          ZONE: zone,
+        }),
+      }
+    );
+
+    const loginData = await loginRes.json();
+    const sessionId = loginData?.Data?.Datas?.SESSION_ID;
+
+    if (!sessionId) {
+      throw new Error(`로그인 실패: ${JSON.stringify(loginData)}`);
+    }
+
+    const approvalRes = await fetch(
+      `https://sboapi${zone}.ecount.com/OAPI/V2/Approval/GetApprovalWaitList`,
+      {
+        method: 'POST',
         headers: {
+          'Content-Type': 'application/json;charset=UTF-8',
+          'Cookie': `ecount_session_id=${sessionId}`,
+        },
+        body: JSON.stringify({
+          COM_CODE: process.env.ECOUNT_COMPANY,
+          SESSION_ID: sessionId,
+          ZONE: zone,
+        }),
+      }
+    );
+
+    const approvalData = await approvalRes.json();
+    const waitList = approvalData?.Data?.Datas ?? [];
+    const waitCount = waitList.length;
+
+    if (waitCount > 0) {
+      const now = new Date().toLocaleString('ko-KR', {
+        timeZone: 'Asia/Seoul',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const message = {
+        object_type: 'text',
+        text: `🔔 이카운트 결재 알림 (${now})\n\n미결재 ${waitCount}건이 대기 중입니다.\n\n👉 https://sboapi${zone}.ecount.com`,
+        link: {
+          web_url: `https://sboapi${zone}.ecount.com`,
+          mobile_web_url: `https://sboapi${zone}.ecount.com`,
+        },
+      };
+
+      const kakaoRes = await fetch(
+        'https://kapi.kakao.com/v2/api/talk/memo/default/send',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': `Bearer ${process.env.KAKAO_ACCESS_TOKEN}`,
+          },
+          body: `template_object=${encodeURIComponent(JSON.stringify(message))}`,
+        }
+      );
+
+      const kakaoData = await kakaoRes.json();
+
+      if (kakaoData.result_code !== 0) {
+        throw new Error(`카카오 전송 실패: ${JSON.stringify(kakaoData)}`);
+      }
+
+      return new Response(
+        JSON.stringify({ ok: true, waitCount, kakao: kakaoData }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ ok: true, waitCount: 0, message: '결재 대기 없음' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+
+  } catch (err) {
+    console.error('[baobab-alert] 오류:', err.message);
+    return new Response(
+      JSON.stringify({ ok: false, error: err.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
