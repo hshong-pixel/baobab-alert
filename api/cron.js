@@ -1,11 +1,11 @@
-export const config = { runtime: 'edge' };
+export const config = { maxDuration: 30 };
 
 const ECOUNT_ZONE_URL = 'https://oapi.ecount.com/OAPI/V2/Zone';
 
-export default async function handler(req) {
-  const authHeader = req.headers.get('authorization');
+export default async function handler(req, res) {
+  const authHeader = req.headers['authorization'];
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response('Unauthorized', { status: 401 });
+    return res.status(401).send('Unauthorized');
   }
 
   try {
@@ -18,6 +18,7 @@ export default async function handler(req) {
       }),
     });
     const zoneData = await zoneRes.json();
+    console.log('[baobab-alert] zoneData:', JSON.stringify(zoneData));
     const zone = zoneData?.Data?.ZONE;
     if (!zone) throw new Error(`Zone fail: ${JSON.stringify(zoneData)}`);
 
@@ -36,6 +37,7 @@ export default async function handler(req) {
       }
     );
     const loginData = await loginRes.json();
+    console.log('[baobab-alert] loginData:', JSON.stringify(loginData));
     const sessionId = loginData?.Data?.Datas?.SESSION_ID;
     if (!sessionId) throw new Error(`Login fail: ${JSON.stringify(loginData)}`);
 
@@ -43,10 +45,7 @@ export default async function handler(req) {
       `https://oapi${zone}.ecount.com/OAPI/V2/Approval/GetApprovalWaitList`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json;charset=UTF-8',
-          'Cookie': `ecount_session_id=${sessionId}`,
-        },
+        headers: { 'Content-Type': 'application/json;charset=UTF-8' },
         body: JSON.stringify({
           COM_CODE: process.env.ECOUNT_COMPANY,
           SESSION_ID: sessionId,
@@ -91,22 +90,13 @@ export default async function handler(req) {
       console.log('[baobab-alert] kakaoData:', JSON.stringify(kakaoData));
       if (kakaoData.result_code !== 0) throw new Error(`Kakao fail: ${JSON.stringify(kakaoData)}`);
 
-      return new Response(
-        JSON.stringify({ ok: true, waitCount, kakao: kakaoData }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
+      return res.status(200).json({ ok: true, waitCount, kakao: kakaoData });
     }
 
-    return new Response(
-      JSON.stringify({ ok: true, waitCount: 0, message: 'no pending approvals' }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    return res.status(200).json({ ok: true, waitCount: 0, message: 'no pending approvals' });
 
   } catch (err) {
     console.error('[baobab-alert] error:', err.message);
-    return new Response(
-      JSON.stringify({ ok: false, error: err.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
