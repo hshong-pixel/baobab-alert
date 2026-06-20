@@ -1,6 +1,4 @@
-export const config = {
-  runtime: 'edge',
-};
+export const config = { runtime: 'edge' };
 
 const ECOUNT_ZONE_URL = 'https://sboapi.ecount.com/OAPI/V2/Zone';
 
@@ -19,13 +17,9 @@ export default async function handler(req) {
         USER_ID: process.env.ECOUNT_ID,
       }),
     });
-
     const zoneData = await zoneRes.json();
     const zone = zoneData?.Data?.ZONE;
-
-    if (!zone) {
-      throw new Error(`Zone 조회 실패: ${JSON.stringify(zoneData)}`);
-    }
+    if (!zone) throw new Error(`Zone 조회 실패: ${JSON.stringify(zoneData)}`);
 
     const loginRes = await fetch(
       `https://sboapi${zone}.ecount.com/OAPI/V2/OAPILogin`,
@@ -41,13 +35,9 @@ export default async function handler(req) {
         }),
       }
     );
-
     const loginData = await loginRes.json();
     const sessionId = loginData?.Data?.Datas?.SESSION_ID;
-
-    if (!sessionId) {
-      throw new Error(`로그인 실패: ${JSON.stringify(loginData)}`);
-    }
+    if (!sessionId) throw new Error(`로그인 실패: ${JSON.stringify(loginData)}`);
 
     const approvalRes = await fetch(
       `https://sboapi${zone}.ecount.com/OAPI/V2/Approval/GetApprovalWaitList`,
@@ -64,7 +54,6 @@ export default async function handler(req) {
         }),
       }
     );
-
     const approvalData = await approvalRes.json();
     const waitList = approvalData?.Data?.Datas ?? [];
     const waitCount = waitList.length;
@@ -77,7 +66,6 @@ export default async function handler(req) {
         hour: '2-digit',
         minute: '2-digit',
       });
-
       const message = {
         object_type: 'text',
         text: `🔔 이카운트 결재 알림 (${now})\n\n미결재 ${waitCount}건이 대기 중입니다.\n\n👉 https://sboapi${zone}.ecount.com`,
@@ -86,7 +74,6 @@ export default async function handler(req) {
           mobile_web_url: `https://sboapi${zone}.ecount.com`,
         },
       };
-
       const kakaoRes = await fetch(
         'https://kapi.kakao.com/v2/api/talk/memo/default/send',
         {
@@ -98,12 +85,8 @@ export default async function handler(req) {
           body: `template_object=${encodeURIComponent(JSON.stringify(message))}`,
         }
       );
-
       const kakaoData = await kakaoRes.json();
-
-      if (kakaoData.result_code !== 0) {
-        throw new Error(`카카오 전송 실패: ${JSON.stringify(kakaoData)}`);
-      }
+      if (kakaoData.result_code !== 0) throw new Error(`카카오 전송 실패: ${JSON.stringify(kakaoData)}`);
 
       return new Response(
         JSON.stringify({ ok: true, waitCount, kakao: kakaoData }),
@@ -112,12 +95,12 @@ export default async function handler(req) {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, waitCount: 0, message: '결재 대기 없음' }),
+      JSON.stringify({ ok: true, waitCount: 0, message: 'no pending approvals' }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
 
   } catch (err) {
-    console.error('[baobab-alert] 오류:', err.message);
+    console.error('[baobab-alert] error:', err.message);
     return new Response(
       JSON.stringify({ ok: false, error: err.message }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
