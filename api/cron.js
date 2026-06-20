@@ -22,7 +22,7 @@ export default async function handler(req) {
     if (!zone) throw new Error(`Zone fail: ${JSON.stringify(zoneData)}`);
 
     const loginRes = await fetch(
-      `https://sboapi${zone}.ecount.com/OAPI/V2/OAPILogin`,
+      `https://oapi${zone}.ecount.com/OAPI/V2/OAPILogin`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json;charset=UTF-8' },
@@ -40,7 +40,7 @@ export default async function handler(req) {
     if (!sessionId) throw new Error(`Login fail: ${JSON.stringify(loginData)}`);
 
     const approvalRes = await fetch(
-      `https://sboapi${zone}.ecount.com/OAPI/V2/Approval/GetApprovalWaitList`,
+      `https://oapi${zone}.ecount.com/OAPI/V2/Approval/GetApprovalWaitList`,
       {
         method: 'POST',
         headers: {
@@ -68,10 +68,10 @@ export default async function handler(req) {
       });
       const message = {
         object_type: 'text',
-        text: `🔔 이카운트 결재 알림 (${now})\n\n미결재 ${waitCount}건이 대기 중입니다.\n\n👉 https://sboapi${zone}.ecount.com`,
+        text: `🔔 이카운트 결재 알림 (${now})\n\n미결재 ${waitCount}건이 대기 중입니다.\n\n👉 https://oapi${zone}.ecount.com`,
         link: {
-          web_url: `https://sboapi${zone}.ecount.com`,
-          mobile_web_url: `https://sboapi${zone}.ecount.com`,
+          web_url: `https://oapi${zone}.ecount.com`,
+          mobile_web_url: `https://oapi${zone}.ecount.com`,
         },
       };
       const kakaoRes = await fetch(
@@ -80,30 +80,4 @@ export default async function handler(req) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Bearer ${process.env.KAKAO_ACCESS_TOKEN}`,
-          },
-          body: `template_object=${encodeURIComponent(JSON.stringify(message))}`,
-        }
-      );
-      const kakaoData = await kakaoRes.json();
-      if (kakaoData.result_code !== 0) throw new Error(`Kakao fail: ${JSON.stringify(kakaoData)}`);
-
-      return new Response(
-        JSON.stringify({ ok: true, waitCount, kakao: kakaoData }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    return new Response(
-      JSON.stringify({ ok: true, waitCount: 0, message: 'no pending approvals' }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
-
-  } catch (err) {
-    console.error('[baobab-alert] error:', err.message);
-    return new Response(
-      JSON.stringify({ ok: false, error: err.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-}
+            'Authorization':
