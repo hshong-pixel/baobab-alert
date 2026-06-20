@@ -1,6 +1,4 @@
-export const config = { maxDuration: 30 };
-
-const ECOUNT_ZONE_URL = 'https://oapi.ecount.com/OAPI/V2/Zone';
+export const config = { maxDuration: 10 };
 
 export default async function handler(req, res) {
   const authHeader = req.headers['authorization'];
@@ -8,95 +6,35 @@ export default async function handler(req, res) {
     return res.status(401).send('Unauthorized');
   }
 
-  try {
-    const zoneRes = await fetch(ECOUNT_ZONE_URL, {
+  const now = new Date().toLocaleString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const message = {
+    object_type: 'text',
+    text: `🔔 이카운트 결재 확인 (${now})\n\n미결재 건을 확인해주세요.\n\n👉 https://ecerp.ecount.com`,
+    link: {
+      web_url: 'https://ecerp.ecount.com',
+      mobile_web_url: 'https://ecerp.ecount.com',
+    },
+  };
+
+  const kakaoRes = await fetch(
+    'https://kapi.kakao.com/v2/api/talk/memo/default/send',
+    {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json;charset=UTF-8' },
-      body: JSON.stringify({
-        COM_CODE: process.env.ECOUNT_COMPANY,
-        USER_ID: process.env.ECOUNT_ID,
-      }),
-    });
-    const zoneData = await zoneRes.json();
-    console.log('[baobab-alert] zoneData:', JSON.stringify(zoneData));
-    const zone = zoneData?.Data?.ZONE;
-    if (!zone) throw new Error(`Zone fail: ${JSON.stringify(zoneData)}`);
-
-    const loginRes = await fetch(
-      `https://oapi${zone}.ecount.com/OAPI/V2/OAPILogin`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json;charset=UTF-8' },
-        body: JSON.stringify({
-          COM_CODE: process.env.ECOUNT_COMPANY,
-          USER_ID: process.env.ECOUNT_ID,
-          API_CERT_KEY: process.env.ECOUNT_PW,
-          LAN_TYPE: 'ko-KR',
-          ZONE: zone,
-        }),
-      }
-    );
-    const loginData = await loginRes.json();
-    console.log('[baobab-alert] loginData:', JSON.stringify(loginData));
-    const sessionId = loginData?.Data?.Datas?.SESSION_ID;
-    if (!sessionId) throw new Error(`Login fail: ${JSON.stringify(loginData)}`);
-
-    const approvalRes = await fetch(
-      `https://oapi${zone}.ecount.com/OAPI/V2/Approval/GetApprovalWaitList`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json;charset=UTF-8' },
-        body: JSON.stringify({
-          COM_CODE: process.env.ECOUNT_COMPANY,
-          SESSION_ID: sessionId,
-          ZONE: zone,
-        }),
-      }
-    );
-    const approvalData = await approvalRes.json();
-    console.log('[baobab-alert] approvalData:', JSON.stringify(approvalData));
-    const waitList = approvalData?.Data?.Datas ?? [];
-    const waitCount = waitList.length;
-    console.log('[baobab-alert] waitCount:', waitCount);
-
-    if (waitCount > 0) {
-      const now = new Date().toLocaleString('ko-KR', {
-        timeZone: 'Asia/Seoul',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      const message = {
-        object_type: 'text',
-        text: `🔔 이카운트 결재 알림 (${now})\n\n미결재 ${waitCount}건이 대기 중입니다.\n\n👉 https://oapi${zone}.ecount.com`,
-        link: {
-          web_url: `https://oapi${zone}.ecount.com`,
-          mobile_web_url: `https://oapi${zone}.ecount.com`,
-        },
-      };
-      const kakaoRes = await fetch(
-        'https://kapi.kakao.com/v2/api/talk/memo/default/send',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Bearer ${process.env.KAKAO_ACCESS_TOKEN}`,
-          },
-          body: `template_object=${encodeURIComponent(JSON.stringify(message))}`,
-        }
-      );
-      const kakaoData = await kakaoRes.json();
-      console.log('[baobab-alert] kakaoData:', JSON.stringify(kakaoData));
-      if (kakaoData.result_code !== 0) throw new Error(`Kakao fail: ${JSON.stringify(kakaoData)}`);
-
-      return res.status(200).json({ ok: true, waitCount, kakao: kakaoData });
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Bearer ${process.env.KAKAO_ACCESS_TOKEN}`,
+      },
+      body: `template_object=${encodeURIComponent(JSON.stringify(message))}`,
     }
+  );
 
-    return res.status(200).json({ ok: true, waitCount: 0, message: 'no pending approvals' });
-
-  } catch (err) {
-    console.error('[baobab-alert] error:', err.message);
-    return res.status(500).json({ ok: false, error: err.message });
-  }
+  const kakaoData = await kakaoRes.json();
+  return res.status(200).json({ ok: true, kakao: kakaoData });
 }
