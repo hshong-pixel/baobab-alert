@@ -1,129 +1,40 @@
 // api/cron.js
-// 매일 오전 8시(KST) = UTC 23시 실행
+// 이카운트 결재대기 → 카카오톡 나에게 보내기 알림
 
-export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+export const config = {
+  runtime: 'edge',
+};
+
+const ECOUNT_ZONE_URL = 'https://sboapi.ecount.com/OAPI/V2/Zone';
+
+export default async function handler(req) {
+  // Vercel Cron 인증 체크
+  const authHeader = req.headers.get('authorization');
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return new Response('Unauthorized', { status: 401 });
   }
 
   try {
-    const ecountItems = await getEcountPendingItems();
-    
-    if (ecountItems.length === 0) {
-      return res.status(200).json({ message: '미결재 건 없음' });
+    // ── 1단계: Zone 조회 ──────────────────────────────────────
+    const zoneRes = await fetch(ECOUNT_ZONE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+      body: JSON.stringify({
+        COM_CODE: process.env.ECOUNT_COMPANY,
+        USER_ID:  process.env.ECOUNT_ID,
+      }),
+    });
+
+    const zoneData = await zoneRes.json();
+    const zone = zoneData?.Data?.ZONE;
+
+    if (!zone) {
+      throw new Error(`Zone 조회 실패: ${JSON.stringify(zoneData)}`);
     }
 
-    await sendKakaoMessage(ecountItems);
-    return res.status(200).json({ message: '전송 완료', count: ecountItems.length });
-
-  } catch (err) {
-    console.error('오류:', err);
-    return res.status(500).json({ error: err.message });
-  }
-}
-
-async function getEcountPendingItems() {
-  const COMPANY_CODE = process.env.ECOUNT_COMPANY;
-  const USER_ID      = process.env.ECOUNT_ID;
-  const API_KEY      = process.env.ECOUNT_PW;
-
-  // 1) ZONE 조회
-  const zoneRes = await fetch('https://oapi.ecount.com/ECERP/OAPI/OAPIGetZoneList', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ COM_CODE: COMPANY_CODE })
-  });
-  const zoneData = await zoneRes.json();
-  const zone = zoneData?.Data?.Datas?.ZONE || 'CA';
-
-  // 2) 로그인 → SESSION_ID 발급
-  const loginRes = await fetch(`https://${zone}oapi.ecount.com/ECERP/OAPI/OAPILogin`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      COM_CODE: COMPANY_CODE,
-      USER_ID: USER_ID,
-      API_CERT_KEY: API_KEY,
-      LAN_TYPE: 'ko-KR',
-      ZONE: zone
-    })
-  });
-
-  const loginData = await loginRes.json();
-  
-  if (!loginData?.Data?.Datas?.SESSION_ID) {
-    throw new Error('이카운트 로그인 실패: ' + JSON.stringify(loginData));
-  }
-
-  const sessionId = loginData.Data.Datas.SESSION_ID;
-
-  // 3) 미결재 목록 조회
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const dateStr = yesterday.toISOString().slice(0, 10).replace(/-/g, '');
-
-  const listRes = await fetch(`https://${zone}oapi.ecount.com/ECERP/OAPI/OAPIApproval$GetList`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'SESSION_ID': sessionId
-    },
-    body: JSON.stringify({
-      SESSION_ID: sessionId,
-      COM_CODE: COMPANY_CODE,
-      FROM_DATE: dateStr,
-      TO_DATE: dateStr,
-      APPR_STATUS: 'W',
-      LAN_TYPE: 'ko-KR'
-    })
-  });
-
-  const listData = await listRes.json();
-  const items = listData?.Data?.Datas || [];
-
-  return items.map(item => ({
-    type: item.APPR_TYPE_NM || '기안',
-    title: item.APPR_TITLE || '(제목 없음)',
-    requester: item.REG_USER_NM || '',
-  }));
-}
-
-async function sendKakaoMessage(items) {
-  const accessToken = process.env.KAKAO_ACCESS_TOKEN;
-
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const dateStr = `${yesterday.getMonth()+1}월 ${yesterday.getDate()}일`;
-
-  let msg = `🌳 바오밥 결재 알림\n📅 ${dateStr} 미결재 건\n${'─'.repeat(20)}\n\n`;
-  items.forEach((item, i) => {
-    msg += `${i+1}. [${item.type}] ${item.title}\n   요청자: ${item.requester}\n\n`;
-  });
-  msg += `${'─'.repeat(20)}\n총 ${items.length}건 결재 대기 중입니다.`;
-
-  const templateObject = {
-    object_type: 'text',
-    text: msg,
-    link: {
-      web_url: 'https://erp.ecount.com',
-      mobile_web_url: 'https://erp.ecount.com'
-    },
-    button_title: '이카운트 결재하기'
-  };
-
-  const kakaoRes = await fetch('https://kapi.kakao.com/v2/api/talk/memo/default/send', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: new URLSearchParams({
-      template_object: JSON.stringify(templateObject)
-    })
-  });
-
-  const data = await kakaoRes.json();
-  if (data.result_code !== 0) {
-    throw new Error('카카오 전송 실패: ' + JSON.stringify(data));
-  }
-}
+    // ── 2단계: 로그인 → 세션 토큰 발급 ──────────────────────
+    const loginRes = await fetch(
+      `https://sboapi${zone}.ecount.com/OAPI/V2/OAPILogin`,
+      {
+        method: 'POST',
+        headers: {
