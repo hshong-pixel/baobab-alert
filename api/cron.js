@@ -18,7 +18,6 @@ export default async function handler(req) {
       }),
     });
     const zoneData = await zoneRes.json();
-    console.log('[baobab-alert] zoneData:', JSON.stringify(zoneData));
     const zone = zoneData?.Data?.ZONE;
     if (!zone) throw new Error(`Zone fail: ${JSON.stringify(zoneData)}`);
 
@@ -37,7 +36,6 @@ export default async function handler(req) {
       }
     );
     const loginData = await loginRes.json();
-    console.log('[baobab-alert] loginData:', JSON.stringify(loginData));
     const sessionId = loginData?.Data?.Datas?.SESSION_ID;
     if (!sessionId) throw new Error(`Login fail: ${JSON.stringify(loginData)}`);
 
@@ -57,8 +55,10 @@ export default async function handler(req) {
       }
     );
     const approvalData = await approvalRes.json();
+    console.log('[baobab-alert] approvalData:', JSON.stringify(approvalData));
     const waitList = approvalData?.Data?.Datas ?? [];
     const waitCount = waitList.length;
+    console.log('[baobab-alert] waitCount:', waitCount);
 
     if (waitCount > 0) {
       const now = new Date().toLocaleString('ko-KR', {
@@ -88,6 +88,7 @@ export default async function handler(req) {
         }
       );
       const kakaoData = await kakaoRes.json();
+      console.log('[baobab-alert] kakaoData:', JSON.stringify(kakaoData));
       if (kakaoData.result_code !== 0) throw new Error(`Kakao fail: ${JSON.stringify(kakaoData)}`);
 
       return new Response(
